@@ -1,0 +1,61 @@
+
+name: CI
+
+on:
+    push:
+        branches: [ main ]
+
+jobs:
+    build-and-test:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Elixir
+              uses: erlef/setup-beam@v1
+              with:
+                elixir-version: '1.17.2'
+                otp-version: '27'
+              
+            - name: Docker Compose Up
+              id: dockerup
+              run: docker compose -f ./docker-compose.yml up -d
+
+            - name: Install Dependencies
+              run: |
+                mix deps.get
+                mix assets.setup
+                mix deps.compile
+                mix ecto.create
+            
+            - name: Build Project
+              run: mix compile
+
+            - name: Test Project
+              run: mix test
+
+            - name: Generate Documentation
+              run: mix docs
+            
+            - name: Docker Compose Down
+              if: steps.dockerup.conclusion == 'success'
+              run: docker compose -f ./docker-compose.yml down
+
+            - name: Upload Documentation Artifact
+              uses: actions/upload-pages-artifact@v3
+              with:
+                path: ./doc
+
+    deploy:
+        needs: build-and-test
+
+        runs-on: ubuntu-latest
+
+        permissions:
+            id-token: write
+            pages: write
+
+        steps:
+            - name: Deploy Documentation to GitHub Pages
+              uses: actions/deploy-pages@v4
